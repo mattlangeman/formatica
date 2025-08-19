@@ -16,19 +16,88 @@
   $: enumOptions = dynamicOptions?.enum || field.enum || [];
   $: enumNames = dynamicOptions?.enumNames || field.enumNames || enumOptions;
   
+  // Local validation errors for number inputs
+  let localErrors: string[] = [];
+  $: allErrors = [...errors, ...localErrors];
+  
   function handleInput(event: Event) {
     const target = event.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
     let newValue: any = target.value;
     
     // Type conversion based on field type
     if (field.type === 'number' || field.type === 'integer') {
-      newValue = target.value === '' ? undefined : Number(target.value);
+      if (target.value === '') {
+        localErrors = [];
+        newValue = undefined;
+      } else {
+        // Check if it's a valid number
+        const numValue = Number(target.value);
+        
+        // Allow partial input like "-" or "." while typing
+        const isPartialInput = target.value === '-' || target.value === '.' || target.value === '-.';
+        
+        if (isNaN(numValue) && !isPartialInput) {
+          localErrors = [`Please enter a valid ${field.type === 'integer' ? 'whole number' : 'number'}`];
+          // Still update the value so user can see what they typed
+          newValue = target.value;
+        } else if (field.type === 'integer' && target.value.includes('.')) {
+          localErrors = ['Please enter a whole number (no decimals)'];
+          newValue = target.value;
+        } else {
+          localErrors = [];
+          // Only convert to number if it's valid
+          newValue = isPartialInput ? target.value : numValue;
+        }
+      }
     } else if (field.type === 'boolean') {
       newValue = (target as HTMLInputElement).checked;
     }
     
     value = newValue;
     dispatch('input', newValue);
+  }
+  
+  function handleInvalid(event: Event) {
+    event.preventDefault(); // Prevent browser's default validation message
+    const target = event.target as HTMLInputElement;
+    
+    if (field.type === 'number' || field.type === 'integer') {
+      if (target.validity.badInput) {
+        localErrors = [`Please enter a valid ${field.type === 'integer' ? 'whole number' : 'number'}`];
+      } else if (target.validity.rangeUnderflow) {
+        localErrors = [`Value must be at least ${field.minimum}`];
+      } else if (target.validity.rangeOverflow) {
+        localErrors = [`Value must be at most ${field.maximum}`];
+      } else if (target.validity.stepMismatch && field.multipleOf) {
+        localErrors = [`Value must be a multiple of ${field.multipleOf}`];
+      } else if (target.validity.valueMissing) {
+        localErrors = ['This field is required'];
+      }
+    }
+  }
+  
+  function handleBlur(event: Event) {
+    const target = event.target as HTMLInputElement;
+    
+    // Validate number inputs on blur
+    if (field.type === 'number' || field.type === 'integer') {
+      if (target.value !== '') {
+        const numValue = Number(target.value);
+        
+        if (isNaN(numValue)) {
+          localErrors = [`Please enter a valid ${field.type === 'integer' ? 'whole number' : 'number'}`];
+        } else if (field.type === 'integer' && !Number.isInteger(numValue)) {
+          localErrors = ['Please enter a whole number (no decimals)'];
+        } else {
+          localErrors = [];
+          // Convert to proper number on blur if valid
+          value = numValue;
+          dispatch('input', numValue);
+        }
+      } else {
+        localErrors = [];
+      }
+    }
   }
   
   function getInputType() {
@@ -39,7 +108,8 @@
     switch (field.type) {
       case 'integer':
       case 'number':
-        return 'number';
+        // Use text input for better cross-browser validation consistency
+        return 'text';
       case 'boolean':
         return 'checkbox';
       default:
@@ -54,7 +124,7 @@
   $: inputType = getInputType();
 </script>
 
-<div class="form-field" class:has-error={errors.length > 0}>
+<div class="form-field" class:has-error={allErrors.length > 0}>
   {#if field.title}
     <label for={fieldPath}>
       {field.title}
@@ -70,8 +140,8 @@
       {value}
       {disabled}
       on:change={handleInput}
-      aria-invalid={errors.length > 0}
-      aria-describedby={errors.length > 0 ? `${fieldPath}-error` : undefined}
+      aria-invalid={allErrors.length > 0}
+      aria-describedby={allErrors.length > 0 ? `${fieldPath}-error` : undefined}
     >
       <option value="">Select...</option>
       {#each enumOptions as option, i}
@@ -86,8 +156,8 @@
       {value}
       {disabled}
       placeholder={field['ui:placeholder']}
-      aria-invalid={errors.length > 0}
-      aria-describedby={errors.length > 0 ? `${fieldPath}-error` : undefined}
+      aria-invalid={allErrors.length > 0}
+      aria-describedby={allErrors.length > 0 ? `${fieldPath}-error` : undefined}
       on:input={handleInput}
     ></textarea>
   {:else if inputType === 'checkbox'}
@@ -98,8 +168,8 @@
         checked={value || false}
         {disabled}
         on:change={handleInput}
-        aria-invalid={errors.length > 0}
-        aria-describedby={errors.length > 0 ? `${fieldPath}-error` : undefined}
+        aria-invalid={allErrors.length > 0}
+        aria-describedby={allErrors.length > 0 ? `${fieldPath}-error` : undefined}
       />
       <label for={fieldPath} class="checkbox-label">
         {field.title || 'Check this box'}
@@ -124,6 +194,20 @@
         </div>
       {/each}
     </div>
+  {:else if field.type === 'number' || field.type === 'integer'}
+    <input
+      type="text"
+      inputmode={field.type === 'integer' ? 'numeric' : 'decimal'}
+      pattern={field.type === 'integer' ? '[0-9]*' : '[0-9]*[.]?[0-9]*'}
+      id={fieldPath}
+      {value}
+      {disabled}
+      placeholder={field['ui:placeholder']}
+      aria-invalid={allErrors.length > 0}
+      aria-describedby={allErrors.length > 0 ? `${fieldPath}-error` : undefined}
+      on:input={handleInput}
+      on:blur={handleBlur}
+    />
   {:else}
     <input
       type={inputType}
@@ -131,12 +215,11 @@
       {value}
       {disabled}
       placeholder={field['ui:placeholder']}
-      min={field.minimum}
-      max={field.maximum}
-      step={field.multipleOf}
-      aria-invalid={errors.length > 0}
-      aria-describedby={errors.length > 0 ? `${fieldPath}-error` : undefined}
+      aria-invalid={allErrors.length > 0}
+      aria-describedby={allErrors.length > 0 ? `${fieldPath}-error` : undefined}
       on:input={handleInput}
+      on:invalid={handleInvalid}
+      on:blur={handleBlur}
     />
   {/if}
   
@@ -144,9 +227,9 @@
     <small class="help-text">{field['ui:help']}</small>
   {/if}
   
-  {#if errors.length > 0}
+  {#if allErrors.length > 0}
     <div id={`${fieldPath}-error`} class="error-messages" role="alert">
-      {#each errors as error}
+      {#each allErrors as error}
         <span class="error-message">{error}</span>
       {/each}
     </div>

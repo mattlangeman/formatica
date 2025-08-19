@@ -69,7 +69,7 @@
   }
 </script>
 
-<form on:submit={handleSubmit} class="formatica-form">
+<form on:submit={handleSubmit} class="formatica-form" novalidate>
   {#if schema.title}
     <h1 class="form-title">{schema.title}</h1>
   {/if}
