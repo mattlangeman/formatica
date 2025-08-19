@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { FormFieldSchema, FormData } from '../types';
   import { getDynamicEnumOptions } from '../utils';
+  import { validateField } from '../validator';
   import { createEventDispatcher } from 'svelte';
   
   const dispatch = createEventDispatcher();
@@ -30,8 +31,9 @@
         localErrors = [];
         newValue = undefined;
       } else {
-        // Check if it's a valid number
-        const numValue = Number(target.value);
+        // Strip commas for number conversion
+        const cleanValue = target.value.replace(/,/g, '');
+        const numValue = Number(cleanValue);
         
         // Allow partial input like "-" or "." while typing
         const isPartialInput = target.value === '-' || target.value === '.' || target.value === '-.';
@@ -40,12 +42,17 @@
           localErrors = [`Please enter a valid ${field.type === 'integer' ? 'whole number' : 'number'}`];
           // Still update the value so user can see what they typed
           newValue = target.value;
-        } else if (field.type === 'integer' && target.value.includes('.')) {
+        } else if (field.type === 'integer' && cleanValue.includes('.')) {
           localErrors = ['Please enter a whole number (no decimals)'];
           newValue = target.value;
+        } else if (!isPartialInput && !isNaN(numValue)) {
+          // Validate min/max immediately for valid numbers
+          const validationErrors = validateField(field, numValue, fieldPath);
+          localErrors = validationErrors;
+          newValue = numValue;
         } else {
           localErrors = [];
-          // Only convert to number if it's valid
+          // Keep the display value as-is for partial input
           newValue = isPartialInput ? target.value : numValue;
         }
       }
@@ -82,17 +89,25 @@
     // Validate number inputs on blur
     if (field.type === 'number' || field.type === 'integer') {
       if (target.value !== '') {
-        const numValue = Number(target.value);
+        // Strip commas for number conversion
+        const cleanValue = target.value.replace(/,/g, '');
+        const numValue = Number(cleanValue);
         
+        // Check for basic number validity first
         if (isNaN(numValue)) {
           localErrors = [`Please enter a valid ${field.type === 'integer' ? 'whole number' : 'number'}`];
         } else if (field.type === 'integer' && !Number.isInteger(numValue)) {
           localErrors = ['Please enter a whole number (no decimals)'];
         } else {
-          localErrors = [];
-          // Convert to proper number on blur if valid
+          // Use the centralized validation for min/max/multipleOf checks
+          const validationErrors = validateField(field, numValue, fieldPath);
+          localErrors = validationErrors;
+          
+          // Convert to proper number and format with commas regardless of validation
           value = numValue;
           dispatch('input', numValue);
+          // Format display value with commas
+          target.value = numValue.toLocaleString();
         }
       } else {
         localErrors = [];

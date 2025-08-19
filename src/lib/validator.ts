@@ -69,10 +69,10 @@ export function validateFormData(
           errors[requiredPath].push(message);
           return; // Skip adding to parent path
         case 'minimum':
-          message = `Value must be at least ${error.params.limit}`;
+          message = `Value must be at least ${error.params.limit.toLocaleString()}`;
           break;
         case 'maximum':
-          message = `Value must be at most ${error.params.limit}`;
+          message = `Value must be at most ${error.params.limit.toLocaleString()}`;
           break;
         case 'enum':
           message = `Value must be one of: ${error.params.allowedValues.join(', ')}`;
@@ -126,10 +126,10 @@ export function validateField(
           message = 'This field is required';
           break;
         case 'minimum':
-          message = `Value must be at least ${error.params.limit}`;
+          message = `Value must be at least ${error.params.limit.toLocaleString()}`;
           break;
         case 'maximum':
-          message = `Value must be at most ${error.params.limit}`;
+          message = `Value must be at most ${error.params.limit.toLocaleString()}`;
           break;
         case 'enum':
           message = `Please select a valid option`;
