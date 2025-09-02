@@ -1,7 +1,7 @@
 <script lang="ts">
   import Formatica from '$lib/components/Formatica.svelte';
   import type { FormSchema, FormData } from '$lib/types';
-  
+
   const exampleSchema: FormSchema = {
     type: 'object',
     title: 'Project Form',
@@ -154,15 +154,15 @@
       }
     ]
   };
-  
+
   let submittedData: FormData | null = null;
   let currentData: FormData = {};
-  
+
   function handleSubmit(data: FormData) {
     console.log('Form submitted:', data);
     submittedData = data;
   }
-  
+
   function handleChange(data: FormData) {
     currentData = data;
   }
@@ -177,7 +177,7 @@
     <h1>Formatica Demo</h1>
     <p>A dynamic form component powered by JSONSchema with UI Extensions</p>
   </header>
-  
+
   <main>
     <Formatica
       schema={exampleSchema}
@@ -185,22 +185,27 @@
       onChange={handleChange}
       validateOnChange={false}
       submitButtonText="Submit Project"
+      disabledTagConfig={{
+        text: 'Premium Feature',
+        href: '/premium',
+        className: 'premium-badge'
+      }}
     />
   </main>
-  
+
   {#if submittedData}
     <section class="results">
       <h2>Submitted Data</h2>
       <pre>{JSON.stringify(submittedData, null, 2)}</pre>
     </section>
   {/if}
-  
+
   <section class="debug">
     <details>
       <summary>Current Form Data (Live)</summary>
       <pre>{JSON.stringify(currentData, null, 2)}</pre>
     </details>
-    
+
     <details>
       <summary>Form Schema</summary>
       <pre>{JSON.stringify(exampleSchema, null, 2)}</pre>
@@ -214,35 +219,50 @@
     padding: 0;
     background: #f9fafb;
   }
-  
+
+  :global(.premium-badge) {
+    background-color: #3D57E5 !important;
+    color: white !important;
+    border-color: #3D57E5 !important;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  :global(a.premium-badge:hover) {
+    background-color: #2E45D4 !important;
+    border-color: #2E45D4 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(61, 87, 229, 0.3);
+  }
+
   .container {
     min-height: 100vh;
     padding: 2rem;
   }
-  
+
   header {
     text-align: center;
     margin-bottom: 3rem;
   }
-  
+
   header h1 {
     margin: 0 0 0.5rem 0;
     font-size: 2.5rem;
     color: #111827;
   }
-  
+
   header p {
     margin: 0;
     color: #6b7280;
     font-size: 1.125rem;
   }
-  
+
   main {
     background: white;
     border-radius: 0.5rem;
     box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
   }
-  
+
   .results {
     margin-top: 2rem;
     padding: 1.5rem;
@@ -250,16 +270,16 @@
     border: 1px solid #86efac;
     border-radius: 0.5rem;
   }
-  
+
   .results h2 {
     margin: 0 0 1rem 0;
     color: #166534;
   }
-  
+
   .debug {
     margin-top: 2rem;
   }
-  
+
   details {
     margin-bottom: 1rem;
     padding: 1rem;
@@ -267,17 +287,17 @@
     border: 1px solid #e5e7eb;
     border-radius: 0.5rem;
   }
-  
+
   summary {
     cursor: pointer;
     font-weight: 500;
     color: #374151;
   }
-  
+
   summary:hover {
     color: #111827;
   }
-  
+
   pre {
     margin: 1rem 0 0 0;
     padding: 1rem;

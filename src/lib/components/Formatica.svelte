@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { FormSchema, FormData, ValidationErrors } from '../types';
+  import type { FormSchema, FormData, ValidationErrors, DisabledTagConfig } from '../types';
   import { validateFormData } from '../validator';
   import { shouldShowSection, shouldDisableSection } from '../utils';
   import FormSection from './FormSection.svelte';
@@ -10,6 +10,7 @@
   export let onChange: (data: FormData) => void = () => {};
   export let validateOnChange: boolean = false;
   export let submitButtonText: string = 'Submit';
+  export let disabledTagConfig: DisabledTagConfig | null = null;
   
   let formData: FormData = { ...initialData };
   let errors: ValidationErrors = {};
@@ -85,6 +86,7 @@
           bind:formData
           disabled={isDisabled}
           {errors}
+          {disabledTagConfig}
         />
       {/if}
     {/each}

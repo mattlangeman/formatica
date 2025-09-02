@@ -57,3 +57,9 @@ export interface FormData {
 export interface ValidationErrors {
   [path: string]: string[];
 }
+
+export interface DisabledTagConfig {
+  text?: string;
+  href?: string;
+  className?: string;
+}
