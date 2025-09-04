@@ -12,10 +12,21 @@
   export let disabled: boolean = false;
   export let errors: string[] = [];
   export let formData: FormData = {};
+  
+  // Tooltip state
+  let showTooltip = false;
+  let tooltipTimeout: NodeJS.Timeout;
+  
+  // Determine if tooltip text should wrap
+  $: shouldWrapTooltip = field['ui:help'] && field['ui:help'].length > 40;
 
   $: dynamicOptions = getDynamicEnumOptions(field, formData);
-  $: enumOptions = dynamicOptions?.enum || field.enum || [];
-  $: enumNames = dynamicOptions?.enumNames || field.enumNames || enumOptions;
+  $: enumOptions = dynamicOptions?.enum || field.enum || 
+    // For boolean fields with radio widget, provide Yes/No options
+    (field.type === 'boolean' && inputType === 'radio' ? [true, false] : []);
+  $: enumNames = dynamicOptions?.enumNames || field.enumNames || 
+    // For boolean fields with radio widget, provide Yes/No labels
+    (field.type === 'boolean' && inputType === 'radio' ? ['Yes', 'No'] : enumOptions);
 
   // Local validation errors for number inputs
   let localErrors: string[] = [];
@@ -46,9 +57,8 @@
           localErrors = ['Please enter a whole number (no decimals)'];
           newValue = target.value;
         } else if (!isPartialInput && !isNaN(numValue)) {
-          // Validate min/max immediately for valid numbers
-          const validationErrors = validateField(field, numValue, fieldPath);
-          localErrors = validationErrors;
+          // Only validate basic type during input, defer min/max to blur
+          localErrors = [];
           newValue = numValue;
         } else {
           localErrors = [];
@@ -57,7 +67,13 @@
         }
       }
     } else if (field.type === 'boolean') {
-      newValue = (target as HTMLInputElement).checked;
+      if (inputType === 'radio') {
+        // For boolean radio buttons, convert string value to boolean
+        newValue = target.value === 'true';
+      } else {
+        // For boolean checkboxes
+        newValue = (target as HTMLInputElement).checked;
+      }
     }
 
     value = newValue;
@@ -103,11 +119,12 @@
           const validationErrors = validateField(field, numValue, fieldPath);
           localErrors = validationErrors;
 
-          // Convert to proper number and format with commas regardless of validation
+          // Convert to proper number and format based on ui:format setting
           value = numValue;
           dispatch('input', numValue);
-          // Format display value with commas
-          target.value = numValue.toLocaleString();
+          // Format display value with commas unless ui:format is 'none'
+          const shouldFormat = field['ui:format'] !== 'none';
+          target.value = shouldFormat ? numValue.toLocaleString() : String(numValue);
         }
       } else {
         localErrors = [];
@@ -137,20 +154,74 @@
   }
 
   $: inputType = getInputType();
+  
+  function handleTooltipMouseEnter() {
+    clearTimeout(tooltipTimeout);
+    showTooltip = true;
+  }
+  
+  function handleTooltipMouseLeave() {
+    tooltipTimeout = setTimeout(() => {
+      showTooltip = false;
+    }, 200);
+  }
+  
+  function handleTooltipClick(event: Event) {
+    event.stopPropagation();
+    showTooltip = !showTooltip;
+  }
 </script>
 
-<div class="form-field" class:has-error={allErrors.length > 0}>
-  {#if field.title}
-    <label for={fieldPath}>
-      {field.title}
-      {#if field.required}
-        <span class="required">*</span>
+<tr class="form-field" class:has-error={allErrors.length > 0}>
+  <!-- Label Column -->
+  <td class="field-label-cell">
+    <div class="label-wrapper">
+      {#if field.title}
+        <div class="field-label-container">
+          <span class="field-label">
+            {field.title}
+            {#if field.required}
+              <span class="required">*</span>
+            {/if}
+          </span>
+          {#if field['ui:help']}
+            <div class="tooltip-container">
+              <button
+                type="button"
+                class="tooltip-icon"
+                on:mouseenter={handleTooltipMouseEnter}
+                on:mouseleave={handleTooltipMouseLeave}
+                on:click={handleTooltipClick}
+                aria-label="Help information"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M8 11.5V11M8 5.5V9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </button>
+              {#if showTooltip}
+                <div 
+                  role="tooltip"
+                  class="tooltip"
+                  class:wrap={shouldWrapTooltip}
+                  on:mouseenter={handleTooltipMouseEnter}
+                  on:mouseleave={handleTooltipMouseLeave}
+                >
+                  {field['ui:help']}
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
       {/if}
-    </label>
-  {/if}
-
-  {#if inputType === 'select'}
-    <select
+    </div>
+  </td>
+  
+  <!-- Input Column -->
+  <td class="field-input-cell">
+    <div class="input-wrapper">
+      {#if inputType === 'select'}
+        <select
       id={fieldPath}
       {value}
       {disabled}
@@ -164,8 +235,8 @@
           {enumNames[i] || option}
         </option>
       {/each}
-    </select>
-  {:else if inputType === 'textarea'}
+        </select>
+      {:else if inputType === 'textarea'}
     <textarea
       id={fieldPath}
       {value}
@@ -174,8 +245,8 @@
       aria-invalid={allErrors.length > 0}
       aria-describedby={allErrors.length > 0 ? `${fieldPath}-error` : undefined}
       on:input={handleInput}
-    ></textarea>
-  {:else if inputType === 'checkbox'}
+        ></textarea>
+      {:else if inputType === 'checkbox'}
     <div class="checkbox-wrapper">
       <input
         type="checkbox"
@@ -191,8 +262,8 @@
         {field.title || 'Check this box'}
       </label>
     </div>
-  {:else if inputType === 'radio'}
-    <div class="radio-group" role="radiogroup" aria-labelledby={`${fieldPath}-label`}>
+      {:else if inputType === 'radio'}
+        <div class="radio-group" role="radiogroup" aria-labelledby={`${fieldPath}-label`}>
       {#each enumOptions as option, i}
         <div class="radio-wrapper">
           <input
@@ -210,8 +281,8 @@
           </label>
         </div>
       {/each}
-    </div>
-  {:else if field.type === 'number' || field.type === 'integer'}
+        </div>
+      {:else if field.type === 'number' || field.type === 'integer'}
     <input
       type="text"
       inputmode={field.type === 'integer' ? 'numeric' : 'decimal'}
@@ -224,8 +295,8 @@
       aria-describedby={allErrors.length > 0 ? `${fieldPath}-error` : undefined}
       on:input={handleInput}
       on:blur={handleBlur}
-    />
-  {:else}
+        />
+      {:else}
     <input
       type={inputType}
       id={fieldPath}
@@ -237,25 +308,144 @@
       on:input={handleInput}
       on:invalid={handleInvalid}
       on:blur={handleBlur}
-    />
-  {/if}
+        />
+      {/if}
 
-  {#if field['ui:help']}
-    <small class="help-text">{field['ui:help']}</small>
-  {/if}
-
-  {#if allErrors.length > 0}
-    <div id={`${fieldPath}-error`} class="error-messages" role="alert">
-      {#each allErrors as error}
-        <span class="error-message">{error}</span>
-      {/each}
+      {#if allErrors.length > 0}
+        <div id={`${fieldPath}-error`} class="error-messages" role="alert">
+          {#each allErrors as error}
+            <span class="error-message">{error}</span>
+          {/each}
+        </div>
+      {/if}
     </div>
-  {/if}
-</div>
+  </td>
+</tr>
 
 <style>
-  .form-field {
-    margin-bottom: 1.5rem;
+  tr.form-field {
+    border-bottom: 1px solid #e5e7eb;
+    transition: background-color 0.15s;
+  }
+  
+  tr.form-field:hover {
+    background-color: #f9fafb;
+  }
+  
+  .field-label-cell {
+    padding: 0.5rem 1.5rem;
+    width: 33.333333%;
+    border-right: 1px solid #f3f4f6;
+    vertical-align: middle;
+    white-space: normal;
+    position: relative;
+  }
+  
+  .field-input-cell {
+    padding: 0.5rem 1.5rem;
+    width: 66.666667%;
+    vertical-align: middle;
+  }
+  
+  .label-wrapper {
+    display: flex;
+    align-items: center;
+  }
+  
+  .field-label-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .field-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #111827;
+  }
+  
+  .tooltip-container {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    z-index: 1;
+  }
+  
+  .tooltip-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    background: none;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  
+  .tooltip-icon:hover {
+    color: #3b82f6;
+  }
+  
+  .tooltip-icon:focus {
+    outline: none;
+    color: #3b82f6;
+  }
+  
+  .tooltip {
+    position: absolute;
+    left: calc(100% + 0.5rem);
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 0.625rem 0.875rem;
+    background-color: #1f2937;
+    color: white;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    border-radius: 0.375rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    white-space: nowrap;
+    min-width: max-content;
+    max-width: 400px;
+    z-index: 1000;
+    pointer-events: auto;
+  }
+  
+  /* For longer text that needs wrapping */
+  .tooltip.wrap {
+    white-space: normal;
+    width: 320px;
+  }
+  
+  /* Prevent tooltip from going off-screen */
+  @media (max-width: 1200px) {
+    .tooltip {
+      position: fixed;
+      left: auto;
+      right: 1rem;
+      max-width: calc(100vw - 2rem);
+    }
+  }
+  
+  .tooltip::before {
+    content: '';
+    position: absolute;
+    right: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 5px solid transparent;
+    border-right-color: #1f2937;
+  }
+  
+  /* Hide arrow for fixed position tooltips on small screens */
+  @media (max-width: 1200px) {
+    .tooltip::before {
+      display: none;
+    }
+  }
+  
+  .input-wrapper {
+    max-width: 32rem;
   }
 
   label {
@@ -277,8 +467,10 @@
     padding: 0.5rem 0.75rem;
     border: 1px solid #d1d5db;
     border-radius: 0.375rem;
-    font-size: 1rem;
-    transition: border-color 0.15s;
+    font-size: 0.875rem;
+    transition: all 0.15s;
+    background-color: white;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   }
 
   input:focus,
@@ -286,7 +478,7 @@
   textarea:focus {
     outline: none;
     border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   }
 
   input:disabled,
@@ -335,6 +527,7 @@
   .checkbox-wrapper {
     display: flex;
     align-items: center;
+    height: 42px;
   }
 
   .checkbox-label {
@@ -344,8 +537,10 @@
 
   .radio-group {
     display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+    flex-direction: row;
+    gap: 1.5rem;
+    align-items: center;
+    height: 42px;
   }
 
   .radio-wrapper {
@@ -396,17 +591,20 @@
     resize: vertical;
   }
 
-  .help-text {
-    display: block;
-    margin-top: 0.25rem;
-    color: #6b7280;
-    font-size: 0.875rem;
-  }
 
+  tr.has-error {
+    background-color: #fef2f2;
+  }
+  
+  tr.has-error:hover {
+    background-color: #fee2e2;
+  }
+  
   .has-error input,
   .has-error select,
   .has-error textarea {
     border-color: #ef4444;
+    background-color: #fef2f2;
   }
 
   .has-error input:focus,
@@ -414,16 +612,18 @@
   .has-error textarea:focus {
     border-color: #ef4444;
     box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+    background-color: white;
   }
 
   .error-messages {
-    margin-top: 0.25rem;
+    margin-top: 0.375rem;
   }
 
   .error-message {
     display: block;
-    color: #ef4444;
-    font-size: 0.875rem;
+    color: #dc2626;
+    font-size: 0.75rem;
+    line-height: 1.25;
   }
 
   input[type="number"] {

@@ -40,8 +40,9 @@ export interface FormSectionSchema {
   id: string;
   title: string;
   properties: Record<string, FormFieldSchema>;
+  required?: string[];  // Array of required field names for this section
   'ui:show'?: UIConditions;
-  'ui:disabled'?: UIConditions;
+  'ui:disabled'?: UIConditions | DisabledTagConfig;
 }
 
 export interface FormSchema {

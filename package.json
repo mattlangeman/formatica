@@ -13,7 +13,10 @@
 		"lint": "prettier --check . && eslint .",
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run && npm run test:e2e",
-		"test:e2e": "playwright test"
+		"test:e2e": "playwright test",
+		"dev:all": "pnpm -r --parallel dev",
+		"build:all": "pnpm -r build",
+		"demo": "pnpm --filter @formatica/demo dev"
 	},
 	"files": [
 		"dist",
@@ -69,8 +72,6 @@
 		"svelte"
 	],
 	"dependencies": {
-		"ajv": "^8.17.1",
-		"ajv-errors": "^3.0.0",
-		"ajv-formats": "^3.0.1"
+		"ajv": "^8.17.1"
 	}
 }

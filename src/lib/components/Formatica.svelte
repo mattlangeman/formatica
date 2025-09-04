@@ -124,9 +124,7 @@
 
 <style>
   .formatica-form {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 2rem;
+    width: 100%;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   }
   
@@ -138,15 +136,15 @@
   }
   
   .form-sections {
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
   }
   
   .form-actions {
     display: flex;
     gap: 1rem;
     justify-content: flex-end;
-    padding-top: 1rem;
-    border-top: 1px solid #e5e7eb;
+    padding-top: 1.5rem;
+    margin-top: 1.5rem;
   }
   
   .btn {
