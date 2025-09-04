@@ -129,6 +129,10 @@
       } else {
         localErrors = [];
       }
+    } else if (field.type === 'string') {
+      // Validate string fields on blur (includes pattern validation)
+      const validationErrors = validateField(field, value, fieldPath);
+      localErrors = validationErrors;
     }
   }
 

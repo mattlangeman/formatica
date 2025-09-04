@@ -65,6 +65,26 @@ export function validateFormData(
             return; // Skip adding to parent path
           }
           break;
+        case 'pattern':
+          // Check for custom validation message in the schema
+          const fieldPath = error.instancePath.replace(/^\//, '').split('/');
+          let fieldSchema = schema;
+          for (const segment of fieldPath) {
+            if (fieldSchema.properties) {
+              fieldSchema = fieldSchema.properties[segment];
+            } else if (fieldSchema.sections) {
+              const section = fieldSchema.sections.find((s: any) => s.id === segment);
+              if (section) {
+                fieldSchema = section;
+              }
+            }
+          }
+          if (fieldSchema && fieldSchema['ui:validationMessage']) {
+            message = fieldSchema['ui:validationMessage'];
+          } else {
+            message = 'Invalid format';
+          }
+          break;
         case 'minimum':
           if (error.params?.limit !== undefined) {
             message = `Value must be at least ${error.params.limit.toLocaleString()}`;
@@ -140,38 +160,47 @@ export function validateField(
       validate.errors.forEach((error: any) => {
         let message = error.message || 'Invalid value';
         
-        // Enhance error messages
-        switch (error.keyword) {
-          case 'required':
-            message = 'This field is required';
-            break;
-          case 'minimum':
-            if (error.params?.limit !== undefined) {
-              const shouldFormat = fieldSchema['ui:format'] !== 'none';
-              const limitDisplay = shouldFormat ? error.params.limit.toLocaleString() : String(error.params.limit);
-              message = `Value must be at least ${limitDisplay}`;
-            }
-            break;
-          case 'maximum':
-            if (error.params?.limit !== undefined) {
-              const shouldFormat = fieldSchema['ui:format'] !== 'none';
-              const limitDisplay = shouldFormat ? error.params.limit.toLocaleString() : String(error.params.limit);
-              message = `Value must be at most ${limitDisplay}`;
-            }
-            break;
-          case 'enum':
-            message = `Please select a valid option`;
-            break;
-          case 'format':
-            if (error.params?.format) {
-              message = `Invalid ${error.params.format} format`;
-            }
-            break;
-          case 'type':
-            if (error.params?.type) {
-              message = `Value must be a ${error.params.type}`;
-            }
-            break;
+        // Check for custom validation message first
+        if (fieldSchema['ui:validationMessage'] && error.keyword === 'pattern') {
+          message = fieldSchema['ui:validationMessage'];
+        } else {
+          // Enhance error messages
+          switch (error.keyword) {
+            case 'required':
+              message = 'This field is required';
+              break;
+            case 'pattern':
+              // Use custom message if available, otherwise generic message
+              message = fieldSchema['ui:validationMessage'] || 'Invalid format';
+              break;
+            case 'minimum':
+              if (error.params?.limit !== undefined) {
+                const shouldFormat = fieldSchema['ui:format'] !== 'none';
+                const limitDisplay = shouldFormat ? error.params.limit.toLocaleString() : String(error.params.limit);
+                message = `Value must be at least ${limitDisplay}`;
+              }
+              break;
+            case 'maximum':
+              if (error.params?.limit !== undefined) {
+                const shouldFormat = fieldSchema['ui:format'] !== 'none';
+                const limitDisplay = shouldFormat ? error.params.limit.toLocaleString() : String(error.params.limit);
+                message = `Value must be at most ${limitDisplay}`;
+              }
+              break;
+            case 'enum':
+              message = `Please select a valid option`;
+              break;
+            case 'format':
+              if (error.params?.format) {
+                message = `Invalid ${error.params.format} format`;
+              }
+              break;
+            case 'type':
+              if (error.params?.type) {
+                message = `Value must be a ${error.params.type}`;
+              }
+              break;
+          }
         }
         
         errors.push(message);
