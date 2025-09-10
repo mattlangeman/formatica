@@ -2,7 +2,7 @@
   import type { FormFieldSchema, FormData } from '../types';
   import { getDynamicEnumOptions } from '../utils';
   import { validateField } from '../validator';
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onDestroy } from 'svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -16,6 +16,13 @@
   // Tooltip state
   let showTooltip = false;
   let tooltipTimeout: NodeJS.Timeout;
+  let tooltipElement: HTMLDivElement;
+  
+  // Disabled select dropdown state
+  let showDisabledDropdown = false;
+  let disabledDropdownElement: HTMLDivElement;
+  let portalTarget: HTMLElement | null = null;
+  let disabledSelectButton: HTMLButtonElement;
   
   // Determine if tooltip text should wrap
   $: shouldWrapTooltip = field['ui:help'] && field['ui:help'].length > 40;
@@ -141,6 +148,9 @@
       return field['ui:widget'];
     }
 
+    // Check for enum first, regardless of type
+    if (field.enum) return 'select';
+
     switch (field.type) {
       case 'integer':
       case 'number':
@@ -152,16 +162,28 @@
         if (field.format === 'date') return 'date';
         if (field.format === 'email') return 'email';
         if (field.format === 'uri' || field.format === 'url') return 'url';
-        if (field.enum) return 'select';
         return 'text';
     }
   }
 
   $: inputType = getInputType();
   
-  function handleTooltipMouseEnter() {
+  function handleTooltipMouseEnter(event: Event) {
     clearTimeout(tooltipTimeout);
     showTooltip = true;
+    
+    if (showTooltip) {
+      const button = event.currentTarget as HTMLButtonElement;
+      const rect = button.getBoundingClientRect();
+      
+      setTimeout(() => {
+        if (tooltipElement) {
+          tooltipElement.style.left = `${rect.right + 8}px`;
+          tooltipElement.style.top = `${rect.top + rect.height / 2}px`;
+          tooltipElement.style.transform = 'translateY(-50%)';
+        }
+      }, 0);
+    }
   }
   
   function handleTooltipMouseLeave() {
@@ -173,7 +195,150 @@
   function handleTooltipClick(event: Event) {
     event.stopPropagation();
     showTooltip = !showTooltip;
+    
+    if (showTooltip) {
+      const button = event.currentTarget as HTMLButtonElement;
+      const rect = button.getBoundingClientRect();
+      
+      setTimeout(() => {
+        if (tooltipElement) {
+          tooltipElement.style.left = `${rect.right + 8}px`;
+          tooltipElement.style.top = `${rect.top + rect.height / 2}px`;
+          tooltipElement.style.transform = 'translateY(-50%)';
+        }
+      }, 0);
+    }
   }
+  
+  function handleDisabledSelectClick(event: Event) {
+    event.stopPropagation();
+    showDisabledDropdown = !showDisabledDropdown;
+    
+    if (showDisabledDropdown) {
+      // Capture button reference before setTimeout
+      const button = event.currentTarget as HTMLButtonElement;
+      positionDropdown(button);
+    }
+  }
+  
+  function positionDropdown(button: HTMLButtonElement) {
+    const rect = button.getBoundingClientRect();
+    
+    setTimeout(() => {
+      if (disabledDropdownElement) {
+        const dropdownHeight = 200; // max-height from CSS
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+        
+        // Position dropdown above if not enough space below
+        if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+          disabledDropdownElement.style.bottom = `${window.innerHeight - rect.top + 2}px`;
+          disabledDropdownElement.style.top = 'auto';
+          disabledDropdownElement.style.maxHeight = `${Math.min(dropdownHeight, spaceAbove - 10)}px`;
+        } else {
+          disabledDropdownElement.style.top = `${rect.bottom + 2}px`;
+          disabledDropdownElement.style.bottom = 'auto';
+          disabledDropdownElement.style.maxHeight = `${Math.min(dropdownHeight, spaceBelow - 10)}px`;
+        }
+        
+        disabledDropdownElement.style.left = `${rect.left}px`;
+        disabledDropdownElement.style.width = `${rect.width}px`;
+      }
+    }, 0);
+  }
+  
+  function updateDropdownPosition() {
+    if (showDisabledDropdown && disabledSelectButton) {
+      positionDropdown(disabledSelectButton);
+    }
+  }
+  
+  function handleDisabledOptionClick(optionValue: any) {
+    // Don't actually change the value since it's disabled, just close dropdown
+    // No action needed - this is read-only
+    showDisabledDropdown = false;
+  }
+  
+  function handleClickOutside(event: Event) {
+    if (disabledDropdownElement && !disabledDropdownElement.contains(event.target as Node)) {
+      showDisabledDropdown = false;
+    }
+  }
+  
+  // Close disabled dropdown when clicking outside and handle scroll/resize
+  $: if (typeof document !== 'undefined') {
+    if (showDisabledDropdown) {
+      document.addEventListener('click', handleClickOutside);
+      window.addEventListener('scroll', updateDropdownPosition, true);
+      window.addEventListener('resize', updateDropdownPosition);
+      // Create portal container if it doesn't exist
+      if (!portalTarget) {
+        portalTarget = document.createElement('div');
+        portalTarget.className = 'formatica-dropdown-portal';
+        document.body.appendChild(portalTarget);
+      }
+    } else {
+      document.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('scroll', updateDropdownPosition, true);
+      window.removeEventListener('resize', updateDropdownPosition);
+      // Clean up portal container
+      if (portalTarget && portalTarget.parentNode) {
+        portalTarget.parentNode.removeChild(portalTarget);
+        portalTarget = null;
+      }
+    }
+  }
+  
+  // Render dropdown in portal
+  $: if (portalTarget && showDisabledDropdown) {
+    portalTarget.innerHTML = '';
+    const dropdown = document.createElement('div');
+    dropdown.className = 'disabled-dropdown';
+    dropdown.style.position = 'fixed';
+    dropdown.style.zIndex = '9999';
+    
+    enumOptions.forEach((option, i) => {
+      const optionDiv = document.createElement('div');
+      optionDiv.className = 'disabled-option read-only' + (value === option ? ' selected' : '');
+      
+      const optionText = document.createElement('span');
+      optionText.className = 'option-text';
+      optionText.textContent = enumNames[i] || option;
+      optionDiv.appendChild(optionText);
+      
+      if (value === option) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'selected-icon');
+        svg.setAttribute('width', '16');
+        svg.setAttribute('height', '16');
+        svg.setAttribute('viewBox', '0 0 16 16');
+        svg.setAttribute('fill', 'none');
+        
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z');
+        path.setAttribute('fill', 'currentColor');
+        svg.appendChild(path);
+        optionDiv.appendChild(svg);
+      }
+      
+      dropdown.appendChild(optionDiv);
+    });
+    
+    portalTarget.appendChild(dropdown);
+    disabledDropdownElement = dropdown as HTMLDivElement;
+  }
+  
+  // Clean up on component destroy
+  onDestroy(() => {
+    if (typeof document !== 'undefined') {
+      if (portalTarget && portalTarget.parentNode) {
+        portalTarget.parentNode.removeChild(portalTarget);
+      }
+      document.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('scroll', updateDropdownPosition, true);
+      window.removeEventListener('resize', updateDropdownPosition);
+    }
+  });
 </script>
 
 <tr class="form-field" class:has-error={allErrors.length > 0}>
@@ -193,6 +358,7 @@
               <button
                 type="button"
                 class="tooltip-icon"
+                tabindex="-1"
                 on:mouseenter={handleTooltipMouseEnter}
                 on:mouseleave={handleTooltipMouseLeave}
                 on:click={handleTooltipClick}
@@ -205,6 +371,7 @@
               </button>
               {#if showTooltip}
                 <div 
+                  bind:this={tooltipElement}
                   role="tooltip"
                   class="tooltip"
                   class:wrap={shouldWrapTooltip}
@@ -225,21 +392,41 @@
   <td class="field-input-cell">
     <div class="input-wrapper">
       {#if inputType === 'select'}
-        <select
-      id={fieldPath}
-      {value}
-      {disabled}
-      on:change={handleInput}
-      aria-invalid={allErrors.length > 0}
-      aria-describedby={allErrors.length > 0 ? `${fieldPath}-error` : undefined}
-    >
-      <option value="">Select...</option>
-      {#each enumOptions as option, i}
-        <option value={option}>
-          {enumNames[i] || option}
-        </option>
-      {/each}
-        </select>
+        <div class="select-container" class:disabled={disabled}>
+          <select
+            id={fieldPath}
+            {value}
+            {disabled}
+            on:change={handleInput}
+            aria-invalid={allErrors.length > 0}
+            aria-describedby={allErrors.length > 0 ? `${fieldPath}-error` : undefined}
+          >
+            <option value="">Select...</option>
+            {#each enumOptions as option, i}
+              <option value={option}>
+                {enumNames[i] || option}
+              </option>
+            {/each}
+          </select>
+          
+          {#if disabled}
+            <button
+              bind:this={disabledSelectButton}
+              type="button" 
+              class="disabled-select-overlay disabled-select-interactive"
+              on:click={handleDisabledSelectClick}
+              aria-label="View available options"
+              aria-expanded={showDisabledDropdown}
+            >
+              <span class="disabled-select-value">
+                {value ? (enumNames[enumOptions.indexOf(value)] || value) : 'Select...'}
+              </span>
+              <svg class="dropdown-arrow" class:rotated={showDisabledDropdown} width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          {/if}
+        </div>
       {:else if inputType === 'textarea'}
     <textarea
       id={fieldPath}
@@ -397,10 +584,7 @@
   }
   
   .tooltip {
-    position: absolute;
-    left: calc(100% + 0.5rem);
-    top: 50%;
-    transform: translateY(-50%);
+    position: fixed;
     padding: 0.625rem 0.875rem;
     background-color: #1f2937;
     color: white;
@@ -411,24 +595,15 @@
     white-space: nowrap;
     min-width: max-content;
     max-width: 400px;
-    z-index: 1000;
+    z-index: 2000;
     pointer-events: auto;
+    opacity: 1;
   }
   
   /* For longer text that needs wrapping */
   .tooltip.wrap {
     white-space: normal;
     width: 320px;
-  }
-  
-  /* Prevent tooltip from going off-screen */
-  @media (max-width: 1200px) {
-    .tooltip {
-      position: fixed;
-      left: auto;
-      right: 1rem;
-      max-width: calc(100vw - 2rem);
-    }
   }
   
   .tooltip::before {
@@ -439,13 +614,6 @@
     transform: translateY(-50%);
     border: 5px solid transparent;
     border-right-color: #1f2937;
-  }
-  
-  /* Hide arrow for fixed position tooltips on small screens */
-  @media (max-width: 1200px) {
-    .tooltip::before {
-      display: none;
-    }
   }
   
   .input-wrapper {
@@ -639,5 +807,156 @@
   input[type="number"]::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
+  }
+
+  /* Disabled select overlay styles */
+  .select-container {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+  }
+
+  .select-container.disabled select {
+    pointer-events: none;
+    opacity: 0;
+  }
+
+  .disabled-select-overlay {
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    right: 1px;
+    bottom: 1px;
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    font-size: 0.875rem;
+    z-index: 2;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  }
+
+  .disabled-select-overlay:hover {
+    background-color: #e5e7eb;
+  }
+
+  .disabled-select-overlay:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  .disabled-select-value {
+    color: #6b7280;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dropdown-arrow {
+    color: #6b7280;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+    margin-left: 0.5rem;
+  }
+
+  .dropdown-arrow.rotated {
+    transform: rotate(180deg);
+  }
+
+  .disabled-dropdown {
+    position: fixed;
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    z-index: 1000;
+    max-height: 200px;
+    overflow-y: auto;
+    min-width: 200px;
+  }
+
+  .disabled-option {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    border-bottom: 1px solid #f3f4f6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #6b7280;
+  }
+
+  .disabled-option:last-child {
+    border-bottom: none;
+  }
+
+  .disabled-option.read-only {
+    cursor: default;
+    pointer-events: none;
+  }
+
+  .disabled-option.selected {
+    background-color: #f0f9ff;
+    color: #0369a1;
+    font-weight: 500;
+  }
+
+  .option-text {
+    flex: 1;
+  }
+
+  .selected-icon {
+    color: #0369a1;
+    margin-left: 0.5rem;
+    flex-shrink: 0;
+  }
+  
+  /* Global styles for portal dropdown */
+  :global(.formatica-dropdown-portal .disabled-dropdown) {
+    position: fixed !important;
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    z-index: 9999 !important;
+    max-height: 200px;
+    overflow-y: auto;
+    min-width: 200px;
+    opacity: 1 !important;
+  }
+  
+  :global(.formatica-dropdown-portal .disabled-option) {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    border-bottom: 1px solid #f3f4f6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #6b7280;
+    opacity: 1 !important;
+  }
+  
+  :global(.formatica-dropdown-portal .disabled-option:last-child) {
+    border-bottom: none;
+  }
+  
+  :global(.formatica-dropdown-portal .disabled-option.selected) {
+    background-color: #f0f9ff;
+    color: #0369a1;
+    font-weight: 500;
+  }
+  
+  :global(.formatica-dropdown-portal .option-text) {
+    flex: 1;
+  }
+  
+  :global(.formatica-dropdown-portal .selected-icon) {
+    color: #0369a1;
+    margin-left: 0.5rem;
+    flex-shrink: 0;
   }
 </style>
